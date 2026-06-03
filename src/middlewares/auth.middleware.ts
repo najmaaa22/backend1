@@ -1,17 +1,15 @@
-import { Request, Response, NextFunction } from "express";
+import {
+  Request,
+  Response,
+  NextFunction,
+} from "express";
+
 import jwt from "jsonwebtoken";
 
-
-interface AuthUser {
-  id: string;
-  role: "admin" | "user";
-  email: string;
+export interface AuthRequest
+  extends Request {
+  user?: any;
 }
-
-interface AuthRequest extends Request {
-  user?: AuthUser;
-}
-
 
 export const protect = (
   req: AuthRequest,
@@ -19,50 +17,74 @@ export const protect = (
   next: NextFunction
 ) => {
   try {
-    const authHeader = req.headers.authorization;
+    const authHeader =
+      req.headers.authorization;
 
-    if (!authHeader?.startsWith("Bearer ")) {
+    if (
+      !authHeader ||
+      !authHeader.startsWith(
+        "Bearer "
+      )
+    ) {
       return res.status(401).json({
-        message: "Not authorized, token missing or invalid",
+        message: "Unauthorized",
       });
     }
 
-    const token = authHeader.split(" ")[1];
+    const token =
+      authHeader.split(" ")[1];
 
-    const secret = process.env.JWT_SECRET;
-    if (!secret) {
-      return res.status(500).json({
-        message: "JWT secret not configured",
+    if (
+      !token ||
+      token === "null" ||
+      token === "undefined"
+    ) {
+      return res.status(401).json({
+        message: "Invalid token",
       });
     }
 
-    const decoded = jwt.verify(token, secret) as any;
+    const decoded = jwt.verify(
+      token,
+      process.env.JWT_SECRET as string
+    );
 
-    req.user = {
-      id: decoded.id,
-      role: decoded.role,
-      email: decoded.email,
-    };
+    req.user = decoded;
 
     next();
-  } catch (error: any) {
-    console.error("JWT ERROR:", error.message);
-
+  } catch (error) {
     return res.status(401).json({
-      message: "Not authorized, token failed",
+      message:
+        "Token failed or expired",
     });
   }
 };
+
 export const adminOnly = (
   req: AuthRequest,
   res: Response,
   next: NextFunction
 ) => {
-  if (req.user?.role === "admin") {
-    return next();
-  }
+  try {
+    if (!req.user) {
+      return res.status(401).json({
+        message: "Unauthorized",
+      });
+    }
 
-  return res.status(403).json({
-    message: "Forbidden: Admin access only",
-  });
+    if (
+      req.user.role !== "admin"
+    ) {
+      return res.status(403).json({
+        message:
+          "Admin access only",
+      });
+    }
+
+    next();
+  } catch (error) {
+    return res.status(500).json({
+      message: "Server error",
+    });
+  }
 };

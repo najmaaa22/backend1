@@ -17,4 +17,4 @@ export const getAnalytics = async (req: Request, res: Response) => {
       message: error.message,
     });
   }
-};
+}; 

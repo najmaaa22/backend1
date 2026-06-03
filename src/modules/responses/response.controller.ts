@@ -3,92 +3,162 @@ import { Request, Response } from "express";
 import {
   submitResponseService,
   getResponsesService,
+  exportResponsesCSVService,
+  getFormAnalyticsService,
+  getMyResponseService,
 } from "./response.service";
 
-import { Parser } from "json2csv";
-export const submitResponse = async (
-  req: Request,
-  res: Response
-) => {
+// ✅ GET USER'S PREVIOUS RESPONSE
+export const getMyResponse = async (req: Request, res: Response) => {
   try {
-    const response =
-      await submitResponseService(
-        req.params.id as string,
-        req.body.answers
-      );
+    const userId = (req as any).user?.id;
+    const formId = req.params.id as string;
 
-    return res.status(201).json({
-      message: "Response submitted successfully",
-      data: response,
-    });
-  } catch (error: any) {
-    return res.status(500).json({
-      message: error.message,
-    });
-  }
-};
-export const getResponses = async (
-  req: Request,
-  res: Response
-) => {
-  try {
-    const responses =
-      await getResponsesService(
-        req.params.id as string
-      );
+    const previousResponse = await getMyResponseService(formId, userId);
 
     return res.status(200).json({
-      message: "Responses fetched successfully",
-      data: responses,
+      success: true,
+      data: previousResponse,
     });
   } catch (error: any) {
     return res.status(500).json({
+      success: false,
       message: error.message,
     });
   }
 };
-export const exportResponsesCSV = async (
-  req: Request,
-  res: Response
-) => {
-  try {
-    const responses =
-      await getResponsesService(
-        req.params.id as string
+
+// ✅ SUBMIT RESPONSE
+export const submitResponse =
+  async (
+    req: Request,
+    res: Response
+  ) => {
+    try {
+      const response =
+        await submitResponseService(
+          req.params.id as string,
+          req.body.answers,
+          (req as any).user?.id
+        );
+
+      return res
+        .status(201)
+        .json({
+          success: true,
+
+          message:
+            "Response submitted successfully",
+
+          data: response,
+        });
+    } catch (error: any) {
+      return res
+        .status(500)
+        .json({
+          success: false,
+
+          message:
+            error.message,
+        });
+    }
+  };
+
+// ✅ GET RESPONSES
+export const getResponses =
+  async (
+    req: Request,
+    res: Response
+  ) => {
+    try {
+      const responses =
+        await getResponsesService(
+          req.params.id as string
+        );
+
+      return res
+        .status(200)
+        .json({
+          success: true,
+
+          message:
+            "Responses fetched successfully",
+
+          data: responses,
+        });
+    } catch (error: any) {
+      return res
+        .status(500)
+        .json({
+          success: false,
+
+          message:
+            error.message,
+        });
+    }
+  };
+
+// ✅ EXPORT CSV
+export const exportResponsesCSV =
+  async (
+    req: Request,
+    res: Response
+  ) => {
+    try {
+      const csv =
+        await exportResponsesCSVService(
+          req.params.id as string
+        );
+
+      res.header(
+        "Content-Type",
+        "text/csv"
       );
-    const formatted = responses.map(
-      (response: any) => ({
-        ...response.answers,
 
-        version: response.version,
+      res.attachment(
+        `form-${req.params.id}-responses.csv`
+      );
 
-        submittedAt:
-          response.createdAt,
+      return res.send(csv);
+    } catch (error: any) {
+      return res
+        .status(500)
+        .json({
+          success: false,
 
-        score:
-          response.score
-            ?.obtained || 0,
-      })
-    );
+          message:
+            error.message,
+        });
+    }
+  };
 
-    const parser = new Parser();
+// ✅ ANALYTICS
+export const getAnalytics =
+  async (
+    req: Request,
+    res: Response
+  ) => {
+    try {
+      const analytics =
+        await getFormAnalyticsService(
+          req.params.id as string
+        );
 
-    const csv =
-      parser.parse(formatted);
+      return res
+        .status(200)
+        .json({
+          success: true,
 
-    res.header(
-      "Content-Type",
-      "text/csv"
-    );
+          data: analytics,
+        });
+    } catch (error: any) {
+      return res
+        .status(500)
+        .json({
+          success: false,
 
-    res.attachment(
-      "responses.csv"
-    );
-
-    return res.send(csv);
-  } catch (error: any) {
-    return res.status(500).json({
-      message: error.message,
-    });
-  }
-};
+          message:
+            error.message,
+        });
+    }
+  };

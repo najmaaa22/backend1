@@ -1,19 +1,22 @@
 import mongoose, { Document, Schema } from "mongoose";
 
 export interface IResponse extends Document {
-  formId: mongoose.Types.ObjectId; 
-  formGroupId: string;             
+  formId: mongoose.Types.ObjectId;
+  formGroupId: string;
   version: number;
-  answers: Record<string, any>;
+
+  answers: Record<string, string | string[]>;
+
   score?: {
     obtained: number;
     total: number;
-    breakdown: {                  
+    breakdown: {
       fieldId: string;
       isCorrect: boolean;
     }[];
   };
-  submittedBy?: mongoose.Types.ObjectId; 
+
+  submittedBy?: mongoose.Types.ObjectId;
   submittedAt: Date;
 }
 
@@ -43,12 +46,12 @@ const responseSchema = new Schema<IResponse>(
     },
 
     score: {
-      obtained: { type: Number },
-      total: { type: Number },
+      obtained: { type: Number, default: 0 },
+      total: { type: Number, default: 0 },
       breakdown: [
         {
-          fieldId: { type: String },
-          isCorrect: { type: Boolean },
+          fieldId: String,
+          isCorrect: Boolean,
           _id: false,
         },
       ],
@@ -70,10 +73,12 @@ const responseSchema = new Schema<IResponse>(
   }
 );
 
-
+// 🔥 INDEXES (important for analytics)
 responseSchema.index({ formId: 1, submittedAt: -1 });
 responseSchema.index({ formGroupId: 1, version: 1 });
 
 export const Response =
   mongoose.models.Response ||
   mongoose.model<IResponse>("Response", responseSchema);
+
+export default Response;
