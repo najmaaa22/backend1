@@ -1,5 +1,5 @@
 import { Request, Response } from "express";
-import { User } from "./auth.models";
+import User from "./auth.model";
 
 import {
   registerService,

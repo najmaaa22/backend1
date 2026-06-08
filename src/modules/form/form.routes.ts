@@ -1,3 +1,4 @@
+
 import express from "express";
 import {
   createForm,
@@ -10,12 +11,22 @@ import {
 import { protect, adminOnly } from "../../middlewares/auth.middleware";
 
 const router = express.Router();
+
+// CREATE FORM
 router.post("/", protect, adminOnly, createForm);
-router.get("/", protect, getForms);
-router.get("/:id", protect, getFormById);
-router.get("/id/:id", protect, getFormById);
+
+// GET ALL FORMS
+// ✅ REMOVE protect
+router.get("/", getForms);
+
+// GET SINGLE FORM
+// ✅ REMOVE protect
+router.get("/:id", getFormById);
+
+// UPDATE FORM
 router.put("/:id", protect, adminOnly, updateForm);
-router.put("/id/:id", protect, adminOnly, updateForm);
+
+// DELETE FORM
 router.delete("/:id", protect, adminOnly, deleteForm);
 
 export default router;

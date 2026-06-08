@@ -8,13 +8,17 @@ import {
   getMyResponse,
 } from "./response.controller";
 
-import {
-  submitLimiter,
-} from "../../middlewares/rateLimits";
+// നിങ്ങളുടെ rateLimits.ts ഫയലിലെ കൃത്യമായ പേര് ഇമ്പോർട്ട് ചെയ്തു
+import { submitLimiter } from "../../middlewares/rateLimits"; 
 
-import { protect } from "../../middlewares/auth.middleware";
+// നിങ്ങളുടെ auth.middleware-ൽ നിന്നുള്ള പ്രൊട്ടക്ഷൻ മിഡിൽവെയറുകൾ
+import { protect, adminOnly } from "../../middlewares/auth.middleware";
 
 const router = express.Router();
+
+// ==========================================
+// 👤 USER ROUTES
+// ==========================================
 
 // ✅ GET USER'S PREVIOUS RESPONSE
 router.get(
@@ -23,25 +27,31 @@ router.get(
   getMyResponse
 );
 
-// ✅ SUBMIT RESPONSE
+// ✅ SUBMIT RESPONSE (Rate Limiter പ്രൊട്ടക്ഷൻ ഉണ്ട്)
 router.post(
   "/:id/submit",
   protect,
-  submitLimiter,
+  submitLimiter, 
   submitResponse
 );
 
-// ✅ GET ALL RESPONSES (Admins only)
+// ==========================================
+// 🛡️ ADMIN ONLY ROUTES
+// ==========================================
+
+// ✅ GET ALL RESPONSES
 router.get(
   "/:id/responses",
   protect,
+  adminOnly, 
   getResponses
 );
 
-// ✅ EXPORT CSV (Admins only)
+// ✅ EXPORT CSV
 router.get(
   "/:id/export",
   protect,
+  adminOnly, 
   exportResponsesCSV
 );
 
@@ -49,6 +59,7 @@ router.get(
 router.get(
   "/:id/analytics",
   protect,
+  adminOnly, 
   getAnalytics
 );
 

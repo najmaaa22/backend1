@@ -1,7 +1,7 @@
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 
-import { User } from "./auth.models";
+import User from "./auth.model";
 
 export const registerService = async (
   name: string,
@@ -76,7 +76,7 @@ export const loginService = async (
       email: user.email,
       role: user.role,
     },
-    process.env.JWT_SECRET as string,
+  process.env.JWT_SECRET || "my_temporary_secret_key",
     {
       expiresIn: "1d",
     }

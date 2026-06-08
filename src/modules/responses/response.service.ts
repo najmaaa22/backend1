@@ -13,51 +13,57 @@ export const getMyResponseService = async (formId: string, userId: string) => {
   });
 };
 
-// ✅ SUBMIT RESPONSE
+// ✅ SUBMIT RESPONSE (Updated with 4 arguments to fix the TS error)
 export const submitResponseService = async (
   formId: string,
   answers: Record<string, any>,
-  userId?: string
+  userId: string,
+  userEmail: string // 4th argument ആയി ഇമെയിൽ ഇവിടെ സ്വീകരിക്കുന്നു
 ) => {
   const form = await Form.findById(formId);
+  if (!form) throw new Error("NOT_FOUND");
 
-  if (!form) throw new Error("Form not found");
-
-  // Whitelist Access Check
-  if (userId) {
+  // 1. Google Forms Style Whitelist Access Check (Using Email or User ID)
+  // അഡ്മിൻ പബ്ലിക് ആക്കിയിട്ടില്ലെങ്കിൽ മാത്രം ചെക്ക് ചെയ്യുന്നു
+  if (!(form as any).isPublic) {
     const isCreator = form.createdBy && form.createdBy.toString() === userId;
+    
+    // അഡ്മിൻ ഇൻപുട്ട് ചെയ്യുന്ന ലിസ്റ്റിൽ യൂസറുടെ ഇമെയിലോ ഐഡിയോ ഉണ്ടോ എന്ന് നോക്കുന്നു
     const isWhitelisted = form.allowedUsers?.some(
-      (uid: any) => uid.toString() === userId
+      (user: any) => user.toString() === userId || user.toString() === userEmail
     );
 
     if (!isCreator && !isWhitelisted) {
-      throw new Error("Unauthorized: You are not whitelisted for this form");
+      throw new Error("UNAUTHORIZED_ACCESS");
     }
   }
 
-  let score;
+  // 2. Single Submission Constraint Check
+  const existingResponse = await Response.findOne({
+    formGroupId: form.formGroupId,
+    submittedBy: userId,
+  });
 
+  if (existingResponse && form.isQuiz) {
+    throw new Error("QUIZ_ALREADY_SUBMITTED"); // ക്വിസ് ആണെങ്കിൽ അപ്ഡേറ്റ് ചെയ്യാൻ സമ്മതിക്കില്ല
+  }
+
+  // 3. Quiz Score Calculation
+  let score;
   if (form.isQuiz) {
     let correct = 0;
-
     const breakdown: { fieldId: string; isCorrect: boolean }[] = [];
 
     form.fields.forEach((field: any) => {
       const userAnswer = answers[field.fieldId];
       const correctAnswer = field.correctAnswer;
-
       let isCorrect = false;
 
       if (Array.isArray(correctAnswer)) {
-        const userArray = Array.isArray(userAnswer)
-          ? userAnswer
-          : [userAnswer];
-
+        const userArray = Array.isArray(userAnswer) ? userAnswer : [userAnswer];
         isCorrect =
           correctAnswer.length === userArray.length &&
-          correctAnswer.every((a: string) =>
-            userArray.includes(a)
-          );
+          correctAnswer.every((a: string) => userArray.includes(a));
       } else {
         isCorrect =
           String(userAnswer ?? "").trim().toLowerCase() ===
@@ -79,26 +85,13 @@ export const submitResponseService = async (
     };
   }
 
-  // Single Submission Constraint Check
-  if (userId) {
-    const existingResponse = await Response.findOne({
-      formGroupId: form.formGroupId,
-      submittedBy: userId,
-    });
-
-    if (existingResponse) {
-      if (form.isQuiz) {
-        throw new Error("Quizzes can only be completed once. Updates are not allowed.");
-      }
-
-      // If it is a form, update the previous response and bump its linked version reference
-      existingResponse.formId = form._id;
-      existingResponse.version = form.version;
-      existingResponse.answers = answers;
-      existingResponse.submittedAt = new Date();
-
-      return await existingResponse.save();
-    }
+  // 4. If Normal Form, Update existing or Create New Response
+  if (existingResponse) {
+    existingResponse.formId = form._id as any;
+    existingResponse.version = form.version;
+    existingResponse.answers = answers;
+    existingResponse.submittedAt = new Date();
+    return await existingResponse.save();
   }
 
   return await Response.create({
@@ -122,7 +115,7 @@ export const getResponsesByGroupService = async (formGroupId: string) => {
   return await Response.find({ formGroupId }).sort({ submittedAt: -1 });
 };
 
-// ✅ CSV EXPORT (FIXED)
+// ✅ CSV EXPORT
 export const exportResponsesCSVService = async (formId: string) => {
   const form = await Form.findById(formId);
   if (!form) throw new Error("Form not found");
@@ -155,18 +148,16 @@ export const exportResponsesCSVService = async (formId: string) => {
   ];
 
   const parser = new Parser({ fields });
-
   return parser.parse(responses);
 };
 
-// ✅ ANALYTICS (FIXED)
+// ✅ ANALYTICS
 export const getFormAnalyticsService = async (formId: string) => {
   const responses = await Response.find({ formId });
-
   const totalResponses = responses.length;
 
   const quizResponses = responses.filter(
-    (r) => r.score?.total > 0
+    (r) => r.score && r.score.total > 0
   );
 
   const averageScore =

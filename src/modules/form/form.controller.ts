@@ -11,39 +11,18 @@ import {
   deleteFormService,
 } from "./form.service";
 
-const getStringId = (
-  id: string | string[]
-) => {
-  return Array.isArray(id)
-    ? id[0]
-    : id;
-};
-
+// ================= VALIDATION =================
 const formSchema = z.object({
-  title: z
-    .string()
-    .min(1, "Title is required"),
+  title: z.string().min(1),
+  description: z.string().optional().default(""),
+  isQuiz: z.boolean().default(false),
 
-  description: z
-    .string()
-    .optional()
-    .default(""),
-
-  isQuiz: z
-    .boolean()
-    .default(false),
-
-  allowedUsers: z
-    .array(z.string())
-    .optional()
-    .default([]),
+  allowedUsers: z.array(z.string()).optional().default([]),
 
   fields: z.array(
     z.object({
       fieldId: z.string(),
-
       label: z.string(),
-
       type: z.enum([
         "text",
         "number",
@@ -53,15 +32,8 @@ const formSchema = z.object({
         "checkbox",
         "date",
       ]),
-
-      required: z
-        .boolean()
-        .default(false),
-
-      options: z
-        .array(z.string())
-        .optional()
-        .default([]),
+      required: z.boolean().default(false),
+      options: z.array(z.string()).optional().default([]),
 
       validation: z
         .object({
@@ -71,26 +43,26 @@ const formSchema = z.object({
         })
         .optional(),
 
-      correctAnswer: z
-        .any()
-        .optional()
-        .default(null),
+      correctAnswer: z.any().optional(),
     })
   ),
 });
 
-export const createForm = async (
-  req: Request,
-  res: Response
-) => {
+// ================= HELPERS =================
+const getStringId = (id: string | string[] | undefined): string =>
+  Array.isArray(id) ? id[0] : id ?? "";
+
+// ================= CONTROLLERS =================
+
+// CREATE FORM
+export const createForm = async (req: Request, res: Response) => {
   try {
-    const result =
-      formSchema.safeParse(req.body);
+    const result = formSchema.safeParse(req.body);
 
     if (!result.success) {
       return res.status(400).json({
         success: false,
-        message: "Validation Failed",
+        message: "Validation failed",
         errors: result.error.issues,
       });
     }
@@ -99,153 +71,70 @@ export const createForm = async (
       ...result.data,
       formGroupId: uuidv4(),
       version: 1,
-      isActive: true,
-      createdBy: (req as any).user.id,
+      createdBy: (req as any).user?.id,
     };
 
-    const form =
-      await createFormService(data);
+    const form = await createFormService(data);
 
     return res.status(201).json({
       success: true,
-      message:
-        "Form created successfully",
       data: form,
     });
-  } catch (error: any) {
-    console.log(
-      "CREATE FORM ERROR:",
-      error
-    );
-
+  } catch (err: any) {
     return res.status(500).json({
       success: false,
-      message:
-        error.message ||
-        "Internal Server Error",
+      message: err.message || "Server error",
     });
   }
 };
 
-export const updateForm = async (
-  req: Request,
-  res: Response
-) => {
-  try {
-    const formId = getStringId(
-      req.params.id
-    );
-
-    const result =
-      formSchema.safeParse(req.body);
-
-    if (!result.success) {
-      return res.status(400).json({
-        success: false,
-        message: "Validation Failed",
-        errors: result.error.issues,
-      });
-    }
-
-    const existingForm =
-      await getFormByIdService(formId);
-
-    if (!existingForm) {
-      return res.status(404).json({
-        success: false,
-        message: "Form not found",
-      });
-    }
-
-    // Verify creator
-    if (existingForm.createdBy && existingForm.createdBy.toString() !== (req as any).user.id) {
-      return res.status(403).json({
-        success: false,
-        message: "Forbidden: You are not authorized to update this form",
-      });
-    }
-
-    const updatedForm =
-      await updateFormService(
-        formId,
-        result.data
-      );
-
-    return res.status(201).json({
-      success: true,
-      message:
-        "New form version created",
-      data: updatedForm,
-    });
-  } catch (error: any) {
-    console.log(
-      "UPDATE FORM ERROR:",
-      error
-    );
-
-    return res.status(500).json({
-      success: false,
-      message:
-        error.message ||
-        "Internal Server Error",
-    });
-  }
-};
-
-export const getForms = async (
-  req: Request,
-  res: Response
-) => {
+// GET FORMS
+export const getForms = async (req: Request, res: Response) => {
   try {
     const user = (req as any).user;
-    let filter = {};
 
-    if (user.role === "admin") {
-      filter = { createdBy: new mongoose.Types.ObjectId(user.id) };
-    } else {
-      filter = {
-        allowedUsers: new mongoose.Types.ObjectId(user.id),
-        isActive: true,
-      };
+    if (!user?.id) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized",
+      });
     }
 
-    const forms =
-      await getFormsService(filter);
+    const userId = new mongoose.Types.ObjectId(user.id);
+
+    const filter: any = { isActive: true };
+
+    if (user.role === "admin") {
+      filter.createdBy = userId;
+    } else {
+      filter.$or = [
+        { allowedUsers: { $in: [userId] } },
+        { allowedUsers: { $size: 0 } },
+        { allowedUsers: { $exists: false } },
+      ];
+    }
+
+    const forms = await getFormsService(filter);
 
     return res.status(200).json({
       success: true,
-      data: forms,
+      data: Array.isArray(forms) ? forms : [],
     });
-  } catch (error: any) {
-    console.log(
-      "GET FORMS ERROR:",
-      error
-    );
-
+  } catch (err: any) {
     return res.status(500).json({
       success: false,
-      message:
-        error.message ||
-        "Internal Server Error",
+      message: err.message || "Server error",
+      data: [],
     });
   }
 };
 
-export const getFormById = async (
-  req: Request,
-  res: Response
-) => {
+// GET BY ID
+export const getFormById = async (req: Request, res: Response) => {
   try {
-    const formId = getStringId(
-      req.params.id
-    );
+    const id = getStringId(req.params.id);
 
-    const user = (req as any).user;
-
-    const form =
-      await getFormByIdService(
-        formId
-      );
+    const form = await getFormByIdService(id);
 
     if (!form) {
       return res.status(404).json({
@@ -254,75 +143,66 @@ export const getFormById = async (
       });
     }
 
-    // Access Check: Admins can see their own forms; users must be whitelisted
-    if (user.role === "admin") {
-      if (form.createdBy && form.createdBy.toString() !== user.id) {
-        return res.status(403).json({
-          success: false,
-          message: "Unauthorized: You do not own this form",
-        });
-      }
-    } else {
-      const isWhitelisted = form.allowedUsers?.some(
-        (uid: any) => uid.toString() === user.id
-      );
-      if (!isWhitelisted) {
-        return res.status(403).json({
-          success: false,
-          message: "Unauthorized access: You are not whitelisted for this form",
-        });
-      }
-    }
-
     return res.status(200).json({
       success: true,
       data: form,
     });
-  } catch (error: any) {
-    console.log(
-      "GET FORM ERROR:",
-      error
-    );
-
+  } catch (err: any) {
     return res.status(500).json({
       success: false,
-      message:
-        error.message ||
-        "Internal Server Error",
+      message: err.message || "Server error",
     });
   }
 };
 
-export const deleteForm = async (req: Request, res: Response) => {
+// UPDATE (NEW VERSION)
+export const updateForm = async (req: Request, res: Response) => {
   try {
-    const formId = getStringId(req.params.id);
+    const id = getStringId(req.params.id);
 
-    const existingForm = await getFormByIdService(formId);
-    if (!existingForm) {
-      return res.status(404).json({
+    const result = formSchema.safeParse(req.body);
+
+    if (!result.success) {
+      return res.status(400).json({
         success: false,
-        message: "Form not found",
+        message: "Validation failed",
+        errors: result.error.issues,
       });
     }
 
-    // Verify creator
-    if (existingForm.createdBy && existingForm.createdBy.toString() !== (req as any).user.id) {
-      return res.status(403).json({
-        success: false,
-        message: "Forbidden: You are not authorized to delete this form",
-      });
-    }
-
-    const result = await deleteFormService(formId);
+    const updated = await updateFormService(id, {
+      ...result.data,
+      createdBy: (req as any).user?.id,
+    });
 
     return res.status(200).json({
       success: true,
-      ...result,
+      message: "New version created",
+      data: updated,
     });
-  } catch (error: any) {
+  } catch (err: any) {
     return res.status(500).json({
       success: false,
-      message: error.message || "Internal Server Error",
+      message: err.message || "Server error",
+    });
+  }
+};
+
+// DELETE
+export const deleteForm = async (req: Request, res: Response) => {
+  try {
+    const id = getStringId(req.params.id);
+
+    const result = await deleteFormService(id);
+
+    return res.status(200).json({
+      success: true,
+      message: result.message || "Deleted successfully",
+    });
+  } catch (err: any) {
+    return res.status(500).json({
+      success: false,
+      message: err.message || "Server error",
     });
   }
 };

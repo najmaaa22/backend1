@@ -1,18 +1,35 @@
-import { Form } from "./form.model";
+import { Form, IForm } from "./form.model";
+import mongoose from "mongoose";
 
 type FormInput = {
   title: string;
   description?: string;
   isQuiz?: boolean;
   fields: any[];
+  allowedUsers?: string[];
+  createdBy: string;
+  formGroupId?: string;
+  version?: number;
 };
 
-export const createFormService = async (data: any) => {
-  const formGroupId = data.formGroupId || crypto.randomUUID();
+//
+// ================== CREATE FORM ==================
+//
+export const createFormService = async (data: FormInput): Promise<IForm> => {
+  const formGroupId =
+    data.formGroupId ||
+    `form_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+
   const version = data.version || 1;
+
+  const allowedUsersIds = (data.allowedUsers || []).map(
+    (id) => new mongoose.Types.ObjectId(id)
+  );
 
   return await Form.create({
     ...data,
+    allowedUsers: allowedUsersIds,
+    createdBy: new mongoose.Types.ObjectId(data.createdBy),
     formGroupId,
     version,
     isActive: true,
@@ -20,64 +37,91 @@ export const createFormService = async (data: any) => {
   });
 };
 
+//
+// ================== GET FORMS ==================
+//
 export const getFormsService = async (filter: any = {}) => {
-  return await Form.aggregate([
-    {
-      $match: filter,
-    },
-    {
-      $sort: { version: -1 },
-    },
+  const forms = await Form.aggregate([
+    { $match: filter },
+
+    // latest version first
+    { $sort: { formGroupId: 1, version: -1 } },
+
     {
       $group: {
         _id: "$formGroupId",
         doc: { $first: "$$ROOT" },
       },
     },
-    {
-      $replaceRoot: { newRoot: "$doc" },
-    },
-    {
-      $sort: { createdAt: -1 },
-    },
+
+    { $replaceRoot: { newRoot: "$doc" } },
+
+    // final sorting
+    { $sort: { createdAt: -1 } },
   ]);
+
+  // ✅ ALWAYS RETURN ARRAY
+  return forms || [];
 };
 
+//
+// ================== GET FORM BY ID ==================
+//
+export const getFormByIdService = async (
+  id: string
+): Promise<IForm | null> => {
+  if (!mongoose.Types.ObjectId.isValid(id)) return null;
+
+  return await Form.findById(id);
+};
+
+//
+// ================== GET FORM VERSIONS ==================
+//
 export const getFormVersionsService = async (formGroupId: string) => {
   return await Form.find({ formGroupId }).sort({ version: -1 });
 };
 
-export const getFormByIdService = async (id: string) => {
-  return await Form.findById(id);
-};
-
-export const updateFormService = async (formId: string, data: any) => {
+//
+// ================== UPDATE FORM (VERSIONING) ==================
+//
+export const updateFormService = async (
+  formId: string,
+  data: FormInput
+): Promise<IForm> => {
   const existingForm = await Form.findById(formId);
 
   if (!existingForm) {
     throw new Error("Form not found");
   }
 
-  await Form.findByIdAndUpdate(formId, {
-    isActive: false,
-  });
+  await Form.findByIdAndUpdate(formId, { isActive: false });
 
-  const newVersion = await Form.create({
+  const allowedUsersIds = (
+    data.allowedUsers ||
+    existingForm.allowedUsers ||
+    []
+  ).map((id: any) =>
+    typeof id === "string" ? new mongoose.Types.ObjectId(id) : id
+  );
+
+  return await Form.create({
     title: data.title,
     description: data.description,
-    isQuiz: data.isQuiz,
+    isQuiz: data.isQuiz ?? existingForm.isQuiz,
     fields: data.fields,
-    allowedUsers: data.allowedUsers || existingForm.allowedUsers,
+    allowedUsers: allowedUsersIds,
     createdBy: existingForm.createdBy,
     formGroupId: existingForm.formGroupId,
     version: (existingForm.version || 1) + 1,
     isActive: true,
     publishedAt: new Date(),
   });
-
-  return newVersion;
 };
 
+//
+// ================== DELETE FORM (SOFT DELETE ALL VERSIONS) ==================
+//
 export const deleteFormService = async (formId: string) => {
   const form = await Form.findById(formId);
 
@@ -91,6 +135,19 @@ export const deleteFormService = async (formId: string) => {
   );
 
   return {
-    message: "Form deleted successfully",
+    message: "Form and all versions deactivated successfully",
+    formGroupId: form.formGroupId,
   };
+};
+
+//
+// ================== GET LATEST FORM ==================
+//
+export const getLatestFormService = async (
+  formGroupId: string
+): Promise<IForm | null> => {
+  return await Form.findOne({
+    formGroupId,
+    isActive: true,
+  }).sort({ version: -1 });
 };
